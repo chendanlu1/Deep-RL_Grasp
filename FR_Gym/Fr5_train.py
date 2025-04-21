@@ -9,7 +9,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 script_dir = os.path.abspath(os.path.dirname(__file__) if '__file__' in globals() else os.getcwd())
 sys.path.append(os.path.join(script_dir, '../utils'))
 
-from stable_baselines3 import PPO
+from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import set_random_seed
@@ -59,14 +59,20 @@ if __name__ == '__main__':
 
     new_logger = configure(logs_dir, ["stdout", "csv", "tensorboard"])
 
-    model = PPO(
-        policy="MlpPolicy",
-        env=env,
-        verbose=1,
-        tensorboard_log=logs_dir,
-        batch_size=256,
-        device="cuda",
+    model = SAC(
+    policy="MlpPolicy",
+    env=env,
+    verbose=1,
+    tensorboard_log=logs_dir,
+    batch_size=64,
+    learning_rate=3e-4,
+    buffer_size=1000000,
+    learning_starts=10000,
+    tau=0.005,
+    gamma=0.99,
+    device="cuda"
     )
+
     model.set_logger(new_logger)
 
     tensorboard_callback = TensorboardCallback()
@@ -85,12 +91,12 @@ if __name__ == '__main__':
         checkpoint_callback = CheckpointCallback(save_freq=1000, save_path=checkpoints)
         model.learn(
             total_timesteps=TIMESTEPS,
-            tb_log_name=f"PPO-run-episode{episode}",
+            tb_log_name=f"SAC-run-episode{episode}",
             reset_num_timesteps=False,
             callback=CallbackList([eval_callback, tensorboard_callback]),
             log_interval=10
         )
-        model_path = os.path.join(models_dir, f"PPO-run-episode{episode}")
+        model_path = os.path.join(models_dir, f"SAC-run-episode{episode}")
         model.save(model_path)
-        logger.info(f"[Saved] PPO model saved at: {model_path}")
+        logger.info(f"[Saved] SAC model saved at: {model_path}")
 
