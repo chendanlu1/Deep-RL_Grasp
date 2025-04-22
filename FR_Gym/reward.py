@@ -84,7 +84,7 @@ def get_distance(self):
 def grasp_reward(self):
     """总奖励函数：视觉靠近 + 成功抓取为主，辅以姿态/夹力/效率"""
     info = {}
-    distance = get_distance(self)
+    distance = self.get_distance_from_vision()   
     judge_success(self)
 
     success_reward = cal_success_reward(self, distance)

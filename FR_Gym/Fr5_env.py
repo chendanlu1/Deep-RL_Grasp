@@ -1,4 +1,7 @@
 import os
+import cv2
+
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import gymnasium as gym
@@ -100,7 +103,7 @@ class FR5_Env(gym.Env):
             obs_body = self.p.createMultiBody(baseMass=0,
                                               baseCollisionShapeIndex=obs_shape,
                                               basePosition=[0.3 + 0.1*i, 0.65, 0.05])
-            self.p.changeVisualShape(obs_body, -1, rgbaColor=[1, 0, 0, 1])
+            self.p.changeVisualShape(obs_body, -1, rgbaColor=[0, 1, 0, 1])      #green
             self.obstacle_ids.append(obs_body)
 
     def step(self, action):
@@ -196,6 +199,53 @@ class FR5_Env(gym.Env):
                 positions.append((x, y))
             trials += 1
         return positions
+        
+        
+    def get_distance_from_vision(self):
+    # Step 1: Capture RGB image from virtual camera
+        rgb = self.get_camera_image()
+
+    # Step 2: Detect target object using color thresholding (simplified circle detection)
+        hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+        mask = cv2.inRange(hsv, (0, 100, 100), (10, 255, 255))  # example: red target
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if len(contours) == 0:
+            return 1.0  # if detection fails, return max distance
+
+    # Find the centroid of the largest contour
+        c = max(contours, key=cv2.contourArea)
+        M = cv2.moments(c)
+        if M["m00"] == 0:
+            return 1.0
+        u = int(M["m10"] / M["m00"])
+        v = int(M["m01"] / M["m00"])
+
+    # Step 3: Project image pixel (u,v) into 3D camera space
+        fx = fy = 320 / (2 * np.tan(np.radians(60 / 2)))  # estimated focal length for FOV=60°, image width=320
+        cx, cy = 160, 120
+        Z = 0.2  # assume fixed depth of 20cm (can be replaced with depth image)
+
+        X = (u - cx) * Z / fx
+        Y = (v - cy) * Z / fy
+        cam_target_pos = np.array([X, Y, Z])
+
+    # Step 4: Transform target position from camera space to world space
+        cam_link = 10
+        cam_state = self.p.getLinkState(self.fr5, cam_link)
+        cam_pos = np.array(cam_state[0])
+        cam_quat = cam_state[1]
+        cam_rot = R.from_quat(cam_quat).as_matrix()
+        world_target_pos = cam_pos + cam_rot @ cam_target_pos
+
+    # Step 5: Get gripper center position
+        gripper_tip_pos = np.array(self.p.getLinkState(self.fr5, 6)[0])
+        gripper_ori = R.from_quat(self.p.getLinkState(self.fr5, 7)[1])
+        gripper_center = gripper_tip_pos + gripper_ori.apply(np.array([0, 0, 0.15]))
+
+    # Step 6: Compute Euclidean distance between gripper and target
+        return np.linalg.norm(gripper_center - world_target_pos)
+
 
     def render(self):
         self.p.resetDebugVisualizerCamera(cameraDistance=1.0, cameraYaw=180, cameraPitch=-20,
